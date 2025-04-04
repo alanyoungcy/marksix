@@ -241,7 +241,7 @@ def main():
     
     print("\nRunning simulations to find the best combination...")
     
-    for i in range(100):
+    for i in range(10000):
         if i % 10 == 0:  # Progress indicator
             print(f"Completed {i} simulations...")
         
