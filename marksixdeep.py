@@ -1,3 +1,7 @@
+# Please be aware, this code is not working. I am still working on it.
+# THis is already destroyed by cursor, the other part of the code should work
+# still it is worth to observer the logic and i keep it here for future reference.
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -6,7 +10,15 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 import warnings
-warnings.filterwarnings('ignore')
+from typing import Tuple
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from src.data_processor import DataProcessor
+from src.feature_engineering import FeatureEngineer
+from src.model import MarkSixDataset, ModelTrainer
+from src.monte_carlo import MonteCarloSimulator
+from src.visualizer import Visualizer
 
 # Load and clean data
 def load_data(file_path):
@@ -119,21 +131,50 @@ def predict_next_draw_deep(model, scaler, last_draw_features):
     return sorted(final_predictions[:6]) + [final_predictions[6]]
 
 def main():
-    # Train deep learning model
-    print("Training deep learning model...")
-    model, scaler, feature_names = train_deep_learning_model()
+    # 1. 数据加载和预处理
+    data_processor = DataProcessor('data/Mark_Six.csv')
+    df = data_processor.load_data()
     
-    print(f"\nTo predict the next draw, you need to provide values for: {feature_names}")
-    print("The model is now trained. You can use: model, scaler = train_deep_learning_model()")
+    # 2. 特征工程
+    feature_engineer = FeatureEngineer()
+    df_with_features = feature_engineer.process_dataframe(df)
     
-    # Example of last draw features - this should be updated based on actual column names
-    # Use average values if not sure what to input
-    last_draw_features = [1] * len(feature_names)  # Default to 1 for each feature
+    # 打印前5行特征
+    print("特征提取结果前5行：")
+    print(df_with_features[['odd_count', 'even_count', 'numbers_sum', 
+                           'numbers_std', 'consecutive_count']].head())
     
-    # Predict next draw
-    predictions = predict_next_draw_deep(model, scaler, last_draw_features)
-    print("\nPredicted numbers for next draw (Deep Learning):", predictions)
-    print("(Note: These predictions use placeholder feature values. Update the 'last_draw_features' with actual values for better predictions)")
+    # 3. 准备训练数据
+    train_df, test_df = data_processor.split_train_test()
+    
+    feature_columns = ['odd_count', 'even_count', 'numbers_sum', 
+                      'numbers_std', 'consecutive_count']
+    target_columns = [f'Winning No. {i}' for i in range(1, 7)]
+    
+    X_train = train_df[feature_columns].values
+    y_train = train_df[target_columns].values
+    
+    # 4. 训练模型
+    train_dataset = MarkSixDataset(X_train, y_train)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    
+    trainer = ModelTrainer(input_size=len(feature_columns))
+    trainer.train(train_loader)
+    
+    # 5. 蒙特卡洛模拟
+    simulator = MonteCarloSimulator(trainer.model)
+    mean_return, std_return = simulator.run_simulation(
+        torch.FloatTensor(X_train[-1:])  # 使用最后一期数据进行预测
+    )
+    
+    print(f"\n蒙特卡洛模拟结果：")
+    print(f"平均收益: {mean_return:.2f} HKD")
+    print(f"收益标准差: {std_return:.2f} HKD")
+    
+    # 6. 可视化
+    visualizer = Visualizer()
+    visualizer.plot_numbers_sum_trend(df_with_features)
+    visualizer.plot_feature_distributions(df_with_features)
 
 if __name__ == "__main__":
     main()
